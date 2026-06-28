@@ -296,13 +296,53 @@ impl GameBoy {
     fn op_undefined(&mut self) {}
 
     // 0x0_
+
+    // NOP
+    // advances the program counter by 1 address
     fn op_nop(&mut self) {}
-    fn op_ld_bc_d16(&mut self) {}
-    fn op_ld_mem_bc_a(&mut self) {}
-    fn op_inc_bc(&mut self) {}
-    fn op_inc_b(&mut self) {}
-    fn op_dec_b(&mut self) {}
-    fn op_ld_b_d8(&mut self) {}
+
+    // LD BC, d16
+    // loads two operands immediately after opcode into registers b and c
+    fn op_ld_bc_d16(&mut self) {
+        // stores values in memory as little endian (low byte first)
+        // fetch low byte and increment program counter
+        self.reg.c = self.fetch_byte();
+        // fetch high byte and increment program counter
+        self.reg.b = self.fetch_byte();
+    }
+    
+    // LD (BC), A
+    // store contents of register A in memory location addressed by register pair BC
+    fn op_ld_mem_bc_a(&mut self) {
+        let high_byte: u16 = self.reg.b as u16; 
+        let low_byte: u16 = self.reg.c as u16; 
+        let address: u16 = high_byte << 8 | low_byte;
+
+        self.bus.write(address, self.reg.a);
+    }
+
+    fn op_inc_bc(&mut self) {
+
+    }
+
+    // INC B
+    // increment register B by one
+    fn op_inc_b(&mut self) {
+        self.reg.b += 0x01;
+    }
+
+    // DEC B
+    // decrement register B by one
+    fn op_dec_b(&mut self) {
+        self.reg.b -= 0x01;
+    }
+
+    // LD B, d8
+    // load byte immediately after opcode into register B
+    fn op_ld_b_d8(&mut self) {
+        self.reg.b = self.fetch_byte();
+    }
+
     fn op_rlca(&mut self) {}
     fn op_ld_mem_a16_sp(&mut self) {}
     fn op_add_hl_bc(&mut self) {}

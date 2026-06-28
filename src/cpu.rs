@@ -1,3 +1,5 @@
+
+
 #[path = "opcodes.rs"]
 mod opcodes;
 
@@ -114,33 +116,48 @@ pub struct GameBoy {
 
 
 impl GameBoy {
-    fn new() -> Self {
+    pub fn new() -> Self {
         GameBoy {
             reg: Registers::new(),
             bus: Bus::new()
         }
     }
 
-    pub fn fetch_opcode(&mut self) -> u8 {
+    pub fn fetch_byte(&mut self) -> u8 {
         // for the gameboy, opcodes are a single byte, and operands are separate bytes in the stream
-        // pull opcode from memory
-        let opcode: u8 = self.bus.read(self.reg.pc);
+        let byte: u8 = self.bus.read(self.reg.pc);
         self.reg.pc = self.reg.pc.wrapping_add(0x0001);
-        opcode
-    }
-
-    pub fn fetch_operands(&mut self, operand_count: u8) -> Vec<u8> {
-        // based on number of trailing operands, pull the operands into the vector
-        let mut operands: Vec<u8> = Vec::new();
-        for byte_count in 0..operand_count {
-            operands.push(self.bus.read(self.reg.pc.wrapping_add(byte_count as u16)));
-        }
-
-        self.reg.pc = self.reg.pc.wrapping_add(operands.len() as u16);
-        operands
+        byte
     }
     
-    pub fn decode(&mut self, opcode: u8) {
+    pub fn decode_and_execute(&mut self, opcode: u8) {
         opcodes::OPCODE_TABLE[opcode as usize](self);
+    }
+
+    pub fn cycle(&mut self) {
+        let opcode: u8 = self.fetch_byte();
+        self.decode_and_execute(opcode);
+    }
+
+    pub fn dump_registers(&mut self) {
+        println!("==========|Registers|==========");
+        println!("Register A: {:#04X}", self.reg.a);
+        println!("Register F: {:#04X}", self.reg.f);
+        println!("Register B: {:#04X}", self.reg.b);
+        println!("Register C: {:#04X}", self.reg.c);
+        println!("Register D: {:#04X}", self.reg.d);
+        println!("Register E: {:#04X}", self.reg.e);
+        println!("Register H: {:#04X}", self.reg.h);
+        println!("Register L: {:#04X}", self.reg.l);
+        println!("Stack Pointer: {:#06X}", self.reg.sp);
+        println!("Program Counter: {:#06X}", self.reg.pc);
+    }
+
+    pub fn dump_memory(&mut self) {
+        println!("==========|Memory Position|==========");
+        for offset in 0..15 {
+            let position: u16 = self.reg.pc + (offset as u16);
+            println!("Address: {:#06X} -> {:#04X}", position, self.bus.read(position));
+        }
     }
 }
