@@ -12,9 +12,28 @@ pub struct Registers {
     h: u8,
     l: u8,
     sp: u16,
-    // stack counter
+    // stack pointer
     pc: u16
     // program counter
+}
+
+impl Registers {
+    pub fn new() -> Self {
+        // set initial DMG register values
+        // register values a and b used by game to detect hardware
+        Registers {
+            a: 0x01,
+            f: 0xB0,
+            b: 0x00,
+            c: 0x13,
+            d: 0x00,
+            e: 0xD8,
+            h: 0x01,
+            l: 0x4D,
+            sp: 0xFFFE,
+            pc: 0x0100,
+        }
+    }
 }
 
 pub struct Bus {
@@ -33,6 +52,22 @@ pub struct Bus {
 }
 
 impl Bus {
+    fn new() -> Self {
+        Bus {
+            rom: [0x00; 0x8000],
+            vram: [0x00; 0x2000],
+            sram: [0x00; 0x2000],
+            wram0: [0x00; 0x1000],
+            wramx: [0x00; 0x1000],
+            echo_ram: [0x00; 0x1EFF],
+            oam: [0x00; 0x00A0],
+            prohibited: [0x00; 0x0060],
+            io: [0x00; 0x0080],
+            hram: [0x00; 0x007F],
+            ie: [0x00; 0x0001]
+        }
+    }
+
     fn read(&self, addr: u16) -> u8 {
         match addr {
             0x0000..=0x7FFF => self.rom[addr as usize],
@@ -73,13 +108,39 @@ pub struct Instruction {
 }
 
 pub struct GameBoy {
-
+    reg: Registers,
+    bus: Bus,
 }
+
 
 impl GameBoy {
     fn new() -> Self {
         GameBoy {
-
+            reg: Registers::new(),
+            bus: Bus::new()
         }
+    }
+
+    pub fn fetch_opcode(&mut self) -> u8 {
+        // for the gameboy, opcodes are a single byte, and operands are separate bytes in the stream
+        // pull opcode from memory
+        let opcode: u8 = self.bus.read(self.reg.pc);
+        self.reg.pc = self.reg.pc.wrapping_add(0x0001);
+        opcode
+    }
+
+    pub fn fetch_operands(&mut self, operand_count: u8) -> Vec<u8> {
+        // based on number of trailing operands, pull the operands into the vector
+        let mut operands: Vec<u8> = Vec::new();
+        for byte_count in 0..operand_count {
+            operands.push(self.bus.read(self.reg.pc.wrapping_add(byte_count as u16)));
+        }
+
+        self.reg.pc = self.reg.pc.wrapping_add(operands.len() as u16);
+        operands
+    }
+    
+    pub fn decode(&mut self, opcode: u8) {
+        opcodes::OPCODE_TABLE[opcode as usize](self);
     }
 }
