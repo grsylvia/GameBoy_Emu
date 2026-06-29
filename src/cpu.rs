@@ -19,6 +19,13 @@ pub struct Registers {
     // program counter
 }
 
+pub enum Flag {
+    Z = 7,
+    N = 6,
+    H = 5,
+    C = 4,
+}
+
 impl Registers {
     pub fn new() -> Self {
         // set initial DMG register values
@@ -34,6 +41,16 @@ impl Registers {
             l: 0x4D,
             sp: 0xFFFE,
             pc: 0x0100,
+        }
+    }
+
+    pub fn set_flag(&mut self, flag: Flag, set: bool) {
+        let bit_position = flag as u8;
+        if set {
+            self.f |= 1 << bit_position;
+        }
+        else {
+            self.f &= !(1 << bit_position);
         }
     }
 }

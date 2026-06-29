@@ -1,4 +1,4 @@
-use super::GameBoy;
+use super::{GameBoy, Flag};
 
 type OpFn = fn(&mut GameBoy);
 
@@ -314,28 +314,63 @@ impl GameBoy {
     // LD (BC), A
     // store contents of register A in memory location addressed by register pair BC
     fn op_ld_mem_bc_a(&mut self) {
-        let high_byte: u16 = self.reg.b as u16; 
-        let low_byte: u16 = self.reg.c as u16; 
-        let address: u16 = high_byte << 8 | low_byte;
+        let high_byte: u16 = (self.reg.b as u16) << 8;
+        let low_byte: u16 = self.reg.c as u16;
+
+        let address: u16 = high_byte | low_byte;
 
         self.bus.write(address, self.reg.a);
     }
 
+    // INC BC
+    // increment the contents of register pair BC
     fn op_inc_bc(&mut self) {
+        let high_byte: u16 = (self.reg.b as u16) << 8;
+        let low_byte: u16 = self.reg.c as u16;
 
+        let bc_increm: u16 = (high_byte | low_byte).wrapping_add(0x0001);
+
+        self.reg.b = (bc_increm >> 8) as u8;
+        self.reg.c = (bc_increm & 0x00FF) as u8; 
     }
 
     // INC B
     // increment register B by one
     fn op_inc_b(&mut self) {
-        self.reg.b += 0x01;
+        let half_carry = (self.reg.b & 0x0F) == 0x0F;
+
+        // increment register b by 1
+        self.reg.b = self.reg.b.wrapping_add(0x01);
+
+        // if increment wraps register b back to 0x00, set Z flag to 1
+        self.reg.set_flag(Flag::Z, self.reg.b == 0x00);
+    
+        // reset n (subtraction flag)
+        self.reg.set_flag(Flag::N, false);
+
+        // if value in register b overflows to high nibble, set H flag to 1
+        // ex. 0x0F -> 0x10
+        self.reg.set_flag(Flag::H, half_carry);
     }
 
     // DEC B
     // decrement register B by one
     fn op_dec_b(&mut self) {
-        self.reg.b -= 0x01;
+        // borrow from bit 4 occurs when the low nibble is 0
+        let half_carry = (self.reg.b & 0x0F) == 0x00;
+
+        // decrement register b by 1
+        self.reg.b = self.reg.b.wrapping_sub(0x01);
+
+        // if decrement results in 0x00, set Z flag to 1
+        self.reg.set_flag(Flag::Z, self.reg.b == 0x00);
+
+        // set n (subtraction flag)
+        self.reg.set_flag(Flag::N, true);
+
+        self.reg.set_flag(Flag::H, half_carry);
     }
+
 
     // LD B, d8
     // load byte immediately after opcode into register B
@@ -344,12 +379,78 @@ impl GameBoy {
     }
 
     fn op_rlca(&mut self) {}
-    fn op_ld_mem_a16_sp(&mut self) {}
-    fn op_add_hl_bc(&mut self) {}
-    fn op_ld_a_mem_bc(&mut self) {}
+
+    // LD (a16), SP
+    // store lower byte of stack pointer into address specified by the 16-bit operand
+    fn op_ld_mem_a16_sp(&mut self) {
+        // pull lower and higher bytes of stack pointer
+        let lower_sp: u8 = (self.reg.sp & 0xFF) as u8;
+        let high_sp: u8 = (self.reg.sp >> 8) as u8;
+
+        let lower_immediate: u16 = self.fetch_byte() as u16;
+        let high_immediate: u16 = self.fetch_byte() as u16;
+        let address: u16 = (high_immediate << 8) | lower_immediate;
+
+        // store lower byte of sp in immediate 16 bit operand
+        self.bus.write(address, lower_sp);
+
+        // store high byte of sp in a16 address + 1
+        self.bus.write(address.wrapping_add(0x0001), high_sp);
+    }
+
+    // ADD HL, BC
+    // add contents of BC to HL, and store result in HL
+    fn op_add_hl_bc(&mut self) {
+        let bc: u16 = ((self.reg.b as u16) << 8) | (self.reg.c as u16);
+        let hl: u16 = ((self.reg.h as u16) << 8) | (self.reg.l as u16);
+
+        let sum: u16 = bc.wrapping_add(hl);
+
+        self.reg.h = (sum >> 8) as u8;
+        self.reg.l = (sum & 0x00FF) as u8;
+
+    }
+
+    // LD A, (BC)
+    // Load u8 value from memory addressed by BC into register A
+    fn op_ld_a_mem_bc(&mut self) {
+
+    }
+    
     fn op_dec_bc(&mut self) {}
-    fn op_inc_c(&mut self) {}
-    fn op_dec_c(&mut self) {}
+    fn op_inc_c(&mut self) {
+        let half_carry = (self.reg.c & 0x0F) == 0x0F;
+
+        // increment register c by 1
+        self.reg.c = self.reg.c.wrapping_add(0x01);
+
+        // if increment wraps register c back to 0x00, set Z flag to 1
+        self.reg.set_flag(Flag::Z, self.reg.c == 0x00);
+    
+        // reset n (subtraction flag)
+        self.reg.set_flag(Flag::N, false);
+
+        // if value in register c overflows to high nibble, set H flag to 1
+        // ex. 0x0F -> 0x10
+        self.reg.set_flag(Flag::H, half_carry);
+    }
+
+    fn op_dec_c(&mut self) {
+        // borrow from bit 4 occurs when the low nibble is 0
+        let half_carry = (self.reg.c & 0x0F) == 0x00;
+
+        // decrement register c by 1
+        self.reg.c = self.reg.c.wrapping_sub(0x01);
+
+        // if decrement results in 0x00, set Z flag to 1
+        self.reg.set_flag(Flag::Z, self.reg.c == 0x00);
+
+        // set n (subtraction flag)
+        self.reg.set_flag(Flag::N, true);
+
+        self.reg.set_flag(Flag::H, half_carry);
+    }
+
     fn op_ld_c_d8(&mut self) {}
     fn op_rrca(&mut self) {}
 
@@ -358,16 +459,74 @@ impl GameBoy {
     fn op_ld_de_d16(&mut self) {}
     fn op_ld_mem_de_a(&mut self) {}
     fn op_inc_de(&mut self) {}
-    fn op_inc_d(&mut self) {}
-    fn op_dec_d(&mut self) {}
+    fn op_inc_d(&mut self) {
+        let half_carry = (self.reg.d & 0x0F) == 0x0F;
+
+        // increment register d by 1
+        self.reg.d = self.reg.d.wrapping_add(0x01);
+
+        // if increment wraps register d back to 0x00, set Z flag to 1
+        self.reg.set_flag(Flag::Z, self.reg.d == 0x00);
+
+        // reset n (subtraction flag)
+        self.reg.set_flag(Flag::N, false);
+
+        // if value in register d overflows to high nibble, set H flag to 1
+        // ex. 0x0F -> 0x10
+        self.reg.set_flag(Flag::H, half_carry);
+    }
+    fn op_dec_d(&mut self) {
+        // borrow from bit 4 occurs when the low nibble is 0
+        let half_carry = (self.reg.d & 0x0F) == 0x00;
+
+        // decrement register d by 1
+        self.reg.d = self.reg.d.wrapping_sub(0x01);
+
+        // if decrement results in 0x00, set Z flag to 1
+        self.reg.set_flag(Flag::Z, self.reg.d == 0x00);
+
+        // set n (subtraction flag)
+        self.reg.set_flag(Flag::N, true);
+
+        self.reg.set_flag(Flag::H, half_carry);
+    }
     fn op_ld_d_d8(&mut self) {}
     fn op_rla(&mut self) {}
     fn op_jr_r8(&mut self) {}
     fn op_add_hl_de(&mut self) {}
     fn op_ld_a_mem_de(&mut self) {}
     fn op_dec_de(&mut self) {}
-    fn op_inc_e(&mut self) {}
-    fn op_dec_e(&mut self) {}
+    fn op_inc_e(&mut self) {
+        let half_carry = (self.reg.e & 0x0F) == 0x0F;
+
+        // increment register e by 1
+        self.reg.e = self.reg.e.wrapping_add(0x01);
+
+        // if increment wraps register e back to 0x00, set Z flag to 1
+        self.reg.set_flag(Flag::Z, self.reg.e == 0x00);
+
+        // reset n (subtraction flag)
+        self.reg.set_flag(Flag::N, false);
+
+        // if value in register e overflows to high nibble, set H flag to 1
+        // ex. 0x0F -> 0x10
+        self.reg.set_flag(Flag::H, half_carry);
+    }
+    fn op_dec_e(&mut self) {
+        // borrow from bit 4 occurs when the low nibble is 0
+        let half_carry = (self.reg.e & 0x0F) == 0x00;
+
+        // decrement register e by 1
+        self.reg.e = self.reg.e.wrapping_sub(0x01);
+
+        // if decrement results in 0x00, set Z flag to 1
+        self.reg.set_flag(Flag::Z, self.reg.e == 0x00);
+
+        // set n (subtraction flag)
+        self.reg.set_flag(Flag::N, true);
+
+        self.reg.set_flag(Flag::H, half_carry);
+    }
     fn op_ld_e_d8(&mut self) {}
     fn op_rra(&mut self) {}
 
@@ -376,16 +535,74 @@ impl GameBoy {
     fn op_ld_hl_d16(&mut self) {}
     fn op_ld_mem_hli_a(&mut self) {}
     fn op_inc_hl(&mut self) {}
-    fn op_inc_h(&mut self) {}
-    fn op_dec_h(&mut self) {}
+    fn op_inc_h(&mut self) {
+        let half_carry = (self.reg.h & 0x0F) == 0x0F;
+
+        // increment register h by 1
+        self.reg.h = self.reg.h.wrapping_add(0x01);
+
+        // if increment wraps register h back to 0x00, set Z flag to 1
+        self.reg.set_flag(Flag::Z, self.reg.h == 0x00);
+
+        // reset n (subtraction flag)
+        self.reg.set_flag(Flag::N, false);
+
+        // if value in register h overflows to high nibble, set H flag to 1
+        // ex. 0x0F -> 0x10
+        self.reg.set_flag(Flag::H, half_carry);
+    }
+    fn op_dec_h(&mut self) {
+        // borrow from bit 4 occurs when the low nibble is 0
+        let half_carry = (self.reg.h & 0x0F) == 0x00;
+
+        // decrement register h by 1
+        self.reg.h = self.reg.h.wrapping_sub(0x01);
+
+        // if decrement results in 0x00, set Z flag to 1
+        self.reg.set_flag(Flag::Z, self.reg.h == 0x00);
+
+        // set n (subtraction flag)
+        self.reg.set_flag(Flag::N, true);
+
+        self.reg.set_flag(Flag::H, half_carry);
+    }
     fn op_ld_h_d8(&mut self) {}
     fn op_daa(&mut self) {}
     fn op_jr_z_r8(&mut self) {}
     fn op_add_hl_hl(&mut self) {}
     fn op_ld_a_mem_hli(&mut self) {}
     fn op_dec_hl(&mut self) {}
-    fn op_inc_l(&mut self) {}
-    fn op_dec_l(&mut self) {}
+    fn op_inc_l(&mut self) {
+        let half_carry = (self.reg.l & 0x0F) == 0x0F;
+
+        // increment register l by 1
+        self.reg.l = self.reg.l.wrapping_add(0x01);
+
+        // if increment wraps register l back to 0x00, set Z flag to 1
+        self.reg.set_flag(Flag::Z, self.reg.l == 0x00);
+
+        // reset n (subtraction flag)
+        self.reg.set_flag(Flag::N, false);
+
+        // if value in register l overflows to high nibble, set H flag to 1
+        // ex. 0x0F -> 0x10
+        self.reg.set_flag(Flag::H, half_carry);
+    }
+    fn op_dec_l(&mut self) {
+        // borrow from bit 4 occurs when the low nibble is 0
+        let half_carry = (self.reg.l & 0x0F) == 0x00;
+
+        // decrement register l by 1
+        self.reg.l = self.reg.l.wrapping_sub(0x01);
+
+        // if decrement results in 0x00, set Z flag to 1
+        self.reg.set_flag(Flag::Z, self.reg.l == 0x00);
+
+        // set n (subtraction flag)
+        self.reg.set_flag(Flag::N, true);
+
+        self.reg.set_flag(Flag::H, half_carry);
+    }
     fn op_ld_l_d8(&mut self) {}
     fn op_cpl(&mut self) {}
 
@@ -402,8 +619,37 @@ impl GameBoy {
     fn op_add_hl_sp(&mut self) {}
     fn op_ld_a_mem_hld(&mut self) {}
     fn op_dec_sp(&mut self) {}
-    fn op_inc_a(&mut self) {}
-    fn op_dec_a(&mut self) {}
+    fn op_inc_a(&mut self) {
+        let half_carry = (self.reg.a & 0x0F) == 0x0F;
+
+        // increment register a by 1
+        self.reg.a = self.reg.a.wrapping_add(0x01);
+
+        // if increment wraps register a back to 0x00, set Z flag to 1
+        self.reg.set_flag(Flag::Z, self.reg.a == 0x00);
+
+        // reset n (subtraction flag)
+        self.reg.set_flag(Flag::N, false);
+
+        // if value in register a overflows to high nibble, set H flag to 1
+        // ex. 0x0F -> 0x10
+        self.reg.set_flag(Flag::H, half_carry);
+    }
+    fn op_dec_a(&mut self) {
+        // borrow from bit 4 occurs when the low nibble is 0
+        let half_carry = (self.reg.a & 0x0F) == 0x00;
+
+        // decrement register a by 1
+        self.reg.a = self.reg.a.wrapping_sub(0x01);
+
+        // if decrement results in 0x00, set Z flag to 1
+        self.reg.set_flag(Flag::Z, self.reg.a == 0x00);
+
+        // set n (subtraction flag)
+        self.reg.set_flag(Flag::N, true);
+
+        self.reg.set_flag(Flag::H, half_carry);
+    }
     fn op_ld_a_d8(&mut self) {}
     fn op_ccf(&mut self) {}
 
