@@ -295,12 +295,12 @@ pub(super) static OPCODE_TABLE: [OpFn; 256] = [
 impl GameBoy {
     fn op_undefined(&mut self) {}
 
-    // 0x0_
-
+    // 0x00
     // NOP
     // advances the program counter by 1 address
     fn op_nop(&mut self) {}
 
+    // 0x01
     // LD BC, d16
     // loads two operands immediately after opcode into registers b and c
     fn op_ld_bc_d16(&mut self) {
@@ -310,7 +310,8 @@ impl GameBoy {
         // fetch high byte and increment program counter
         self.reg.b = self.fetch_byte();
     }
-    
+
+    // 0x02
     // LD (BC), A
     // store contents of register A in memory location addressed by register pair BC
     fn op_ld_mem_bc_a(&mut self) {
@@ -322,6 +323,7 @@ impl GameBoy {
         self.bus.write(address, self.reg.a);
     }
 
+    // 0x03
     // INC BC
     // increment the contents of register pair BC
     fn op_inc_bc(&mut self) {
@@ -334,6 +336,7 @@ impl GameBoy {
         self.reg.c = (bc_increm & 0x00FF) as u8; 
     }
 
+    // 0x04
     // INC B
     // increment register B by one
     fn op_inc_b(&mut self) {
@@ -353,6 +356,7 @@ impl GameBoy {
         self.reg.set_flag(Flag::H, half_carry);
     }
 
+    // 0x05
     // DEC B
     // decrement register B by one
     fn op_dec_b(&mut self) {
@@ -371,15 +375,35 @@ impl GameBoy {
         self.reg.set_flag(Flag::H, half_carry);
     }
 
-
+    // 0x06
     // LD B, d8
     // load byte immediately after opcode into register B
     fn op_ld_b_d8(&mut self) {
         self.reg.b = self.fetch_byte();
     }
 
-    fn op_rlca(&mut self) {}
+    // 0x07
+    // RLCA (Rotate Left Circular, A)
+    // rotate register to the left by 1 bit, reset Z, N, H, and set / reset C if there is a carry
+    fn op_rlca(&mut self) {
 
+        // reset flags Z, N, H
+        self.reg.set_flag(Flag::Z, false);
+        self.reg.set_flag(Flag::N, false);
+        self.reg.set_flag(Flag::H, false);
+
+        // check if 1 bit is set in bit 7 of register a
+        let carry: bool = (self.reg.a & 0b1000_0000) != 0;
+
+        // set carry flag to old bit 7 (must clear it when bit 7 is 0)
+        self.reg.set_flag(Flag::C, carry);
+
+        // rotate register a 1 bit to the left
+        self.reg.a = self.reg.a.rotate_left(1);
+    }
+    
+
+    // 0x08
     // LD (a16), SP
     // store lower byte of stack pointer into address specified by the 16-bit operand
     fn op_ld_mem_a16_sp(&mut self) {
@@ -398,26 +422,51 @@ impl GameBoy {
         self.bus.write(address.wrapping_add(0x0001), high_sp);
     }
 
+    // 0x09
     // ADD HL, BC
     // add contents of BC to HL, and store result in HL
     fn op_add_hl_bc(&mut self) {
         let bc: u16 = ((self.reg.b as u16) << 8) | (self.reg.c as u16);
         let hl: u16 = ((self.reg.h as u16) << 8) | (self.reg.l as u16);
 
+        let half_carry: bool = (hl > (0x0FFF - bc));
+        let carry: bool = (hl > (0xFFFF - bc));
         let sum: u16 = bc.wrapping_add(hl);
 
         self.reg.h = (sum >> 8) as u8;
         self.reg.l = (sum & 0x00FF) as u8;
 
+        self.reg.set_flag(Flag::N, false);
+        self.reg.set_flag(Flag::H, half_carry);
+        self.reg.set_flag(Flag::C, carry);
+
     }
 
+    // 0x0A
     // LD A, (BC)
-    // Load u8 value from memory addressed by BC into register A
+    // load u8 value from memory addressed by BC into register A
     fn op_ld_a_mem_bc(&mut self) {
+        let bc: u16 = ((self.reg.b as u16) << 8) | (self.reg.c as u16);
 
+        self.reg.a = self.bus.read(bc);
     }
-    
-    fn op_dec_bc(&mut self) {}
+
+    // 0x0B
+    // DEC BC
+    // decrement the contents of register pair BC
+    fn op_dec_bc(&mut self) {
+        let high_byte: u16 = (self.reg.b as u16) << 8;
+        let low_byte: u16 = self.reg.c as u16;
+
+        let bc_decrem: u16 = (high_byte | low_byte).wrapping_add(0x0001);
+
+        self.reg.b = (bc_decrem >> 8) as u8;
+        self.reg.c = (bc_decrem & 0x00FF) as u8; 
+    }
+
+    // 0x0C
+    // INC C
+    // increments the contents of register c
     fn op_inc_c(&mut self) {
         let half_carry = (self.reg.c & 0x0F) == 0x0F;
 
@@ -435,6 +484,9 @@ impl GameBoy {
         self.reg.set_flag(Flag::H, half_carry);
     }
 
+    // 0x0D
+    // DEC C
+    // decrements the contents of register c
     fn op_dec_c(&mut self) {
         // borrow from bit 4 occurs when the low nibble is 0
         let half_carry = (self.reg.c & 0x0F) == 0x00;
@@ -451,14 +503,60 @@ impl GameBoy {
         self.reg.set_flag(Flag::H, half_carry);
     }
 
-    fn op_ld_c_d8(&mut self) {}
+    // 0x0E
+    // LD C, d8
+    // load immediate 8-bit operand into register C
+    fn op_ld_c_d8(&mut self) {
+        self.reg.c = self.fetch_byte();
+    }
+
+    // 0x0F
+    // RRCA
     fn op_rrca(&mut self) {}
 
-    // 0x1_
-    fn op_stop(&mut self) {}
-    fn op_ld_de_d16(&mut self) {}
-    fn op_ld_mem_de_a(&mut self) {}
-    fn op_inc_de(&mut self) {}
+    // 0x10
+
+    // STOP 0
+    // enters standby until joypad input
+    fn op_stop(&mut self) {
+        // includes extra 0x00 padding byte
+        self.fetch_byte();
+        self.halt = true;
+    }
+
+    // 0x11
+    // LD DE, d16
+    fn op_ld_de_d16(&mut self) {
+        self.reg.e = self.fetch_byte();
+        self.reg.d = self.fetch_byte();
+    }
+
+    // 0x12
+    // LD (DE), A
+    fn op_ld_mem_de_a(&mut self) {
+        let high_byte: u16 = (self.reg.d as u16) << 8;
+        let low_byte: u16 = self.reg.e as u16;
+
+        let address: u16 = high_byte | low_byte;
+
+        self.bus.write(address, self.reg.a);
+    }
+
+    // 0x13
+    // INC DE
+    fn op_inc_de(&mut self) {
+        let high_byte: u16 = (self.reg.d as u16) << 8;
+        let low_byte: u16 = self.reg.e as u16;
+
+        let de_increm: u16 = (high_byte | low_byte).wrapping_add(0x0001);
+
+        self.reg.d = (de_increm >> 8) as u8;
+        self.reg.e = (de_increm & 0x00FF) as u8; 
+    }
+
+    // 0x14
+    // INC D
+    // increments the contents of register c
     fn op_inc_d(&mut self) {
         let half_carry = (self.reg.d & 0x0F) == 0x0F;
 
@@ -475,6 +573,10 @@ impl GameBoy {
         // ex. 0x0F -> 0x10
         self.reg.set_flag(Flag::H, half_carry);
     }
+
+    // 0x15
+    // DEC D
+    // decrements the contents of register c
     fn op_dec_d(&mut self) {
         // borrow from bit 4 occurs when the low nibble is 0
         let half_carry = (self.reg.d & 0x0F) == 0x00;
@@ -490,12 +592,34 @@ impl GameBoy {
 
         self.reg.set_flag(Flag::H, half_carry);
     }
-    fn op_ld_d_d8(&mut self) {}
+
+    // 0x16
+    // LD D, d8
+    fn op_ld_d_d8(&mut self) {
+    }
+
+    // 0x17
+    // RLA
     fn op_rla(&mut self) {}
+
+    // 0x18
+    // JR r8
     fn op_jr_r8(&mut self) {}
+
+    // 0x19
+    // ADD HL, DE
     fn op_add_hl_de(&mut self) {}
+
+    // 0x1A
+    // LD A, (DE)
     fn op_ld_a_mem_de(&mut self) {}
+
+    // 0x1B
+    // DEC DE
     fn op_dec_de(&mut self) {}
+
+    // 0x1C
+    // INC E
     fn op_inc_e(&mut self) {
         let half_carry = (self.reg.e & 0x0F) == 0x0F;
 
@@ -512,6 +636,9 @@ impl GameBoy {
         // ex. 0x0F -> 0x10
         self.reg.set_flag(Flag::H, half_carry);
     }
+
+    // 0x1D
+    // DEC E
     fn op_dec_e(&mut self) {
         // borrow from bit 4 occurs when the low nibble is 0
         let half_carry = (self.reg.e & 0x0F) == 0x00;
@@ -527,14 +654,33 @@ impl GameBoy {
 
         self.reg.set_flag(Flag::H, half_carry);
     }
+
+    // 0x1E
+    // LD E, d8
     fn op_ld_e_d8(&mut self) {}
+
+    // 0x1F
+    // RRA
     fn op_rra(&mut self) {}
 
-    // 0x2_
+    // 0x20
+    // JR NZ, r8
     fn op_jr_nz_r8(&mut self) {}
+
+    // 0x21
+    // LD HL, d16
     fn op_ld_hl_d16(&mut self) {}
+
+    // 0x22
+    // LD (HL+), A
     fn op_ld_mem_hli_a(&mut self) {}
+
+    // 0x23
+    // INC HL
     fn op_inc_hl(&mut self) {}
+
+    // 0x24
+    // INC H
     fn op_inc_h(&mut self) {
         let half_carry = (self.reg.h & 0x0F) == 0x0F;
 
@@ -551,6 +697,9 @@ impl GameBoy {
         // ex. 0x0F -> 0x10
         self.reg.set_flag(Flag::H, half_carry);
     }
+
+    // 0x25
+    // DEC H
     fn op_dec_h(&mut self) {
         // borrow from bit 4 occurs when the low nibble is 0
         let half_carry = (self.reg.h & 0x0F) == 0x00;
@@ -566,12 +715,33 @@ impl GameBoy {
 
         self.reg.set_flag(Flag::H, half_carry);
     }
+
+    // 0x26
+    // LD H, d8
     fn op_ld_h_d8(&mut self) {}
+
+    // 0x27
+    // DAA
     fn op_daa(&mut self) {}
+
+    // 0x28
+    // JR Z, r8
     fn op_jr_z_r8(&mut self) {}
+
+    // 0x29
+    // ADD HL, HL
     fn op_add_hl_hl(&mut self) {}
+
+    // 0x2A
+    // LD A, (HL+)
     fn op_ld_a_mem_hli(&mut self) {}
+
+    // 0x2B
+    // DEC HL
     fn op_dec_hl(&mut self) {}
+
+    // 0x2C
+    // INC L
     fn op_inc_l(&mut self) {
         let half_carry = (self.reg.l & 0x0F) == 0x0F;
 
@@ -588,6 +758,9 @@ impl GameBoy {
         // ex. 0x0F -> 0x10
         self.reg.set_flag(Flag::H, half_carry);
     }
+
+    // 0x2D
+    // DEC L
     fn op_dec_l(&mut self) {
         // borrow from bit 4 occurs when the low nibble is 0
         let half_carry = (self.reg.l & 0x0F) == 0x00;
@@ -603,22 +776,65 @@ impl GameBoy {
 
         self.reg.set_flag(Flag::H, half_carry);
     }
+
+    // 0x2E
+    // LD L, d8
     fn op_ld_l_d8(&mut self) {}
+
+    // 0x2F
+    // CPL
     fn op_cpl(&mut self) {}
 
-    // 0x3_
+    // 0x30
+    // JR NC, r8
     fn op_jr_nc_r8(&mut self) {}
+
+    // 0x31
+    // LD SP, d16
     fn op_ld_sp_d16(&mut self) {}
+
+    // 0x32
+    // LD (HL-), A
     fn op_ld_mem_hld_a(&mut self) {}
+
+    // 0x33
+    // INC SP
     fn op_inc_sp(&mut self) {}
+
+    // 0x34
+    // INC (HL)
     fn op_inc_mem_hl(&mut self) {}
+
+    // 0x35
+    // DEC (HL)
     fn op_dec_mem_hl(&mut self) {}
+
+    // 0x36
+    // LD (HL), d8
     fn op_ld_mem_hl_d8(&mut self) {}
+
+    // 0x37
+    // SCF
     fn op_scf(&mut self) {}
+
+    // 0x38
+    // JR C, r8
     fn op_jr_c_r8(&mut self) {}
+
+    // 0x39
+    // ADD HL, SP
     fn op_add_hl_sp(&mut self) {}
+
+    // 0x3A
+    // LD A, (HL-)
     fn op_ld_a_mem_hld(&mut self) {}
+
+    // 0x3B
+    // DEC SP
     fn op_dec_sp(&mut self) {}
+
+    // 0x3C
+    // INC A
     fn op_inc_a(&mut self) {
         let half_carry = (self.reg.a & 0x0F) == 0x0F;
 
@@ -635,6 +851,9 @@ impl GameBoy {
         // ex. 0x0F -> 0x10
         self.reg.set_flag(Flag::H, half_carry);
     }
+
+    // 0x3D
+    // DEC A
     fn op_dec_a(&mut self) {
         // borrow from bit 4 occurs when the low nibble is 0
         let half_carry = (self.reg.a & 0x0F) == 0x00;
@@ -650,211 +869,737 @@ impl GameBoy {
 
         self.reg.set_flag(Flag::H, half_carry);
     }
+
+    // 0x3E
+    // LD A, d8
     fn op_ld_a_d8(&mut self) {}
+
+    // 0x3F
+    // CCF
     fn op_ccf(&mut self) {}
 
-    // 0x4_
+    // 0x40
+    // LD B, B
     fn op_ld_b_b(&mut self) {}
+
+    // 0x41
+    // LD B, C
     fn op_ld_b_c(&mut self) {}
+
+    // 0x42
+    // LD B, D
     fn op_ld_b_d(&mut self) {}
+
+    // 0x43
+    // LD B, E
     fn op_ld_b_e(&mut self) {}
+
+    // 0x44
+    // LD B, H
     fn op_ld_b_h(&mut self) {}
+
+    // 0x45
+    // LD B, L
     fn op_ld_b_l(&mut self) {}
+
+    // 0x46
+    // LD B, (HL)
     fn op_ld_b_mem_hl(&mut self) {}
+
+    // 0x47
+    // LD B, A
     fn op_ld_b_a(&mut self) {}
+
+    // 0x48
+    // LD C, B
     fn op_ld_c_b(&mut self) {}
+
+    // 0x49
+    // LD C, C
     fn op_ld_c_c(&mut self) {}
+
+    // 0x4A
+    // LD C, D
     fn op_ld_c_d(&mut self) {}
+
+    // 0x4B
+    // LD C, E
     fn op_ld_c_e(&mut self) {}
+
+    // 0x4C
+    // LD C, H
     fn op_ld_c_h(&mut self) {}
+
+    // 0x4D
+    // LD C, L
     fn op_ld_c_l(&mut self) {}
+
+    // 0x4E
+    // LD C, (HL)
     fn op_ld_c_mem_hl(&mut self) {}
+
+    // 0x4F
+    // LD C, A
     fn op_ld_c_a(&mut self) {}
 
-    // 0x5_
+    // 0x50
+    // LD D, B
     fn op_ld_d_b(&mut self) {}
+
+    // 0x51
+    // LD D, C
     fn op_ld_d_c(&mut self) {}
+
+    // 0x52
+    // LD D, D
     fn op_ld_d_d(&mut self) {}
+
+    // 0x53
+    // LD D, E
     fn op_ld_d_e(&mut self) {}
+
+    // 0x54
+    // LD D, H
     fn op_ld_d_h(&mut self) {}
+
+    // 0x55
+    // LD D, L
     fn op_ld_d_l(&mut self) {}
+
+    // 0x56
+    // LD D, (HL)
     fn op_ld_d_mem_hl(&mut self) {}
+
+    // 0x57
+    // LD D, A
     fn op_ld_d_a(&mut self) {}
+
+    // 0x58
+    // LD E, B
     fn op_ld_e_b(&mut self) {}
+
+    // 0x59
+    // LD E, C
     fn op_ld_e_c(&mut self) {}
+
+    // 0x5A
+    // LD E, D
     fn op_ld_e_d(&mut self) {}
+
+    // 0x5B
+    // LD E, E
     fn op_ld_e_e(&mut self) {}
+
+    // 0x5C
+    // LD E, H
     fn op_ld_e_h(&mut self) {}
+
+    // 0x5D
+    // LD E, L
     fn op_ld_e_l(&mut self) {}
+
+    // 0x5E
+    // LD E, (HL)
     fn op_ld_e_mem_hl(&mut self) {}
+
+    // 0x5F
+    // LD E, A
     fn op_ld_e_a(&mut self) {}
 
-    // 0x6_
+    // 0x60
+    // LD H, B
     fn op_ld_h_b(&mut self) {}
+
+    // 0x61
+    // LD H, C
     fn op_ld_h_c(&mut self) {}
+
+    // 0x62
+    // LD H, D
     fn op_ld_h_d(&mut self) {}
+
+    // 0x63
+    // LD H, E
     fn op_ld_h_e(&mut self) {}
+
+    // 0x64
+    // LD H, H
     fn op_ld_h_h(&mut self) {}
+
+    // 0x65
+    // LD H, L
     fn op_ld_h_l(&mut self) {}
+
+    // 0x66
+    // LD H, (HL)
     fn op_ld_h_mem_hl(&mut self) {}
+
+    // 0x67
+    // LD H, A
     fn op_ld_h_a(&mut self) {}
+
+    // 0x68
+    // LD L, B
     fn op_ld_l_b(&mut self) {}
+
+    // 0x69
+    // LD L, C
     fn op_ld_l_c(&mut self) {}
+
+    // 0x6A
+    // LD L, D
     fn op_ld_l_d(&mut self) {}
+
+    // 0x6B
+    // LD L, E
     fn op_ld_l_e(&mut self) {}
+
+    // 0x6C
+    // LD L, H
     fn op_ld_l_h(&mut self) {}
+
+    // 0x6D
+    // LD L, L
     fn op_ld_l_l(&mut self) {}
+
+    // 0x6E
+    // LD L, (HL)
     fn op_ld_l_mem_hl(&mut self) {}
+
+    // 0x6F
+    // LD L, A
     fn op_ld_l_a(&mut self) {}
 
-    // 0x7_
+    // 0x70
+    // LD (HL), B
     fn op_ld_mem_hl_b(&mut self) {}
+
+    // 0x71
+    // LD (HL), C
     fn op_ld_mem_hl_c(&mut self) {}
+
+    // 0x72
+    // LD (HL), D
     fn op_ld_mem_hl_d(&mut self) {}
+
+    // 0x73
+    // LD (HL), E
     fn op_ld_mem_hl_e(&mut self) {}
+
+    // 0x74
+    // LD (HL), H
     fn op_ld_mem_hl_h(&mut self) {}
+
+    // 0x75
+    // LD (HL), L
     fn op_ld_mem_hl_l(&mut self) {}
+
+    // 0x76
+    // HALT
     fn op_halt(&mut self) {}
+
+    // 0x77
+    // LD (HL), A
     fn op_ld_mem_hl_a(&mut self) {}
+
+    // 0x78
+    // LD A, B
     fn op_ld_a_b(&mut self) {}
+
+    // 0x79
+    // LD A, C
     fn op_ld_a_c(&mut self) {}
+
+    // 0x7A
+    // LD A, D
     fn op_ld_a_d(&mut self) {}
+
+    // 0x7B
+    // LD A, E
     fn op_ld_a_e(&mut self) {}
+
+    // 0x7C
+    // LD A, H
     fn op_ld_a_h(&mut self) {}
+
+    // 0x7D
+    // LD A, L
     fn op_ld_a_l(&mut self) {}
+
+    // 0x7E
+    // LD A, (HL)
     fn op_ld_a_mem_hl(&mut self) {}
+
+    // 0x7F
+    // LD A, A
     fn op_ld_a_a(&mut self) {}
 
-    // 0x8_
+    // 0x80
+    // ADD A, B
     fn op_add_a_b(&mut self) {}
+
+    // 0x81
+    // ADD A, C
     fn op_add_a_c(&mut self) {}
+
+    // 0x82
+    // ADD A, D
     fn op_add_a_d(&mut self) {}
+
+    // 0x83
+    // ADD A, E
     fn op_add_a_e(&mut self) {}
+
+    // 0x84
+    // ADD A, H
     fn op_add_a_h(&mut self) {}
+
+    // 0x85
+    // ADD A, L
     fn op_add_a_l(&mut self) {}
+
+    // 0x86
+    // ADD A, (HL)
     fn op_add_a_mem_hl(&mut self) {}
+
+    // 0x87
+    // ADD A, A
     fn op_add_a_a(&mut self) {}
+
+    // 0x88
+    // ADC A, B
     fn op_adc_a_b(&mut self) {}
+
+    // 0x89
+    // ADC A, C
     fn op_adc_a_c(&mut self) {}
+
+    // 0x8A
+    // ADC A, D
     fn op_adc_a_d(&mut self) {}
+
+    // 0x8B
+    // ADC A, E
     fn op_adc_a_e(&mut self) {}
+
+    // 0x8C
+    // ADC A, H
     fn op_adc_a_h(&mut self) {}
+
+    // 0x8D
+    // ADC A, L
     fn op_adc_a_l(&mut self) {}
+
+    // 0x8E
+    // ADC A, (HL)
     fn op_adc_a_mem_hl(&mut self) {}
+
+    // 0x8F
+    // ADC A, A
     fn op_adc_a_a(&mut self) {}
 
-    // 0x9_
+    // 0x90
+    // SUB B
     fn op_sub_b(&mut self) {}
+
+    // 0x91
+    // SUB C
     fn op_sub_c(&mut self) {}
+
+    // 0x92
+    // SUB D
     fn op_sub_d(&mut self) {}
+
+    // 0x93
+    // SUB E
     fn op_sub_e(&mut self) {}
+
+    // 0x94
+    // SUB H
     fn op_sub_h(&mut self) {}
+
+    // 0x95
+    // SUB L
     fn op_sub_l(&mut self) {}
+
+    // 0x96
+    // SUB (HL)
     fn op_sub_mem_hl(&mut self) {}
+
+    // 0x97
+    // SUB A
     fn op_sub_a(&mut self) {}
+
+    // 0x98
+    // SBC A, B
     fn op_sbc_a_b(&mut self) {}
+
+    // 0x99
+    // SBC A, C
     fn op_sbc_a_c(&mut self) {}
+
+    // 0x9A
+    // SBC A, D
     fn op_sbc_a_d(&mut self) {}
+
+    // 0x9B
+    // SBC A, E
     fn op_sbc_a_e(&mut self) {}
+
+    // 0x9C
+    // SBC A, H
     fn op_sbc_a_h(&mut self) {}
+
+    // 0x9D
+    // SBC A, L
     fn op_sbc_a_l(&mut self) {}
+
+    // 0x9E
+    // SBC A, (HL)
     fn op_sbc_a_mem_hl(&mut self) {}
+
+    // 0x9F
+    // SBC A, A
     fn op_sbc_a_a(&mut self) {}
 
-    // 0xA_
+    // 0xA0
+    // AND B
     fn op_and_b(&mut self) {}
+
+    // 0xA1
+    // AND C
     fn op_and_c(&mut self) {}
+
+    // 0xA2
+    // AND D
     fn op_and_d(&mut self) {}
+
+    // 0xA3
+    // AND E
     fn op_and_e(&mut self) {}
+
+    // 0xA4
+    // AND H
     fn op_and_h(&mut self) {}
+
+    // 0xA5
+    // AND L
     fn op_and_l(&mut self) {}
+
+    // 0xA6
+    // AND (HL)
     fn op_and_mem_hl(&mut self) {}
+
+    // 0xA7
+    // AND A
     fn op_and_a(&mut self) {}
+
+    // 0xA8
+    // XOR B
     fn op_xor_b(&mut self) {}
+
+    // 0xA9
+    // XOR C
     fn op_xor_c(&mut self) {}
+
+    // 0xAA
+    // XOR D
     fn op_xor_d(&mut self) {}
+
+    // 0xAB
+    // XOR E
     fn op_xor_e(&mut self) {}
+
+    // 0xAC
+    // XOR H
     fn op_xor_h(&mut self) {}
+
+    // 0xAD
+    // XOR L
     fn op_xor_l(&mut self) {}
+
+    // 0xAE
+    // XOR (HL)
     fn op_xor_mem_hl(&mut self) {}
+
+    // 0xAF
+    // XOR A
     fn op_xor_a(&mut self) {}
 
-    // 0xB_
+    // 0xB0
+    // OR B
     fn op_or_b(&mut self) {}
+
+    // 0xB1
+    // OR C
     fn op_or_c(&mut self) {}
+
+    // 0xB2
+    // OR D
     fn op_or_d(&mut self) {}
+
+    // 0xB3
+    // OR E
     fn op_or_e(&mut self) {}
+
+    // 0xB4
+    // OR H
     fn op_or_h(&mut self) {}
+
+    // 0xB5
+    // OR L
     fn op_or_l(&mut self) {}
+
+    // 0xB6
+    // OR (HL)
     fn op_or_mem_hl(&mut self) {}
+
+    // 0xB7
+    // OR A
     fn op_or_a(&mut self) {}
+
+    // 0xB8
+    // CP B
     fn op_cp_b(&mut self) {}
+
+    // 0xB9
+    // CP C
     fn op_cp_c(&mut self) {}
+
+    // 0xBA
+    // CP D
     fn op_cp_d(&mut self) {}
+
+    // 0xBB
+    // CP E
     fn op_cp_e(&mut self) {}
+
+    // 0xBC
+    // CP H
     fn op_cp_h(&mut self) {}
+
+    // 0xBD
+    // CP L
     fn op_cp_l(&mut self) {}
+
+    // 0xBE
+    // CP (HL)
     fn op_cp_mem_hl(&mut self) {}
+
+    // 0xBF
+    // CP A
     fn op_cp_a(&mut self) {}
 
-    // 0xC_
+    // 0xC0
+    // RET NZ
     fn op_ret_nz(&mut self) {}
+
+    // 0xC1
+    // POP BC
     fn op_pop_bc(&mut self) {}
+
+    // 0xC2
+    // JP NZ, a16
     fn op_jp_nz_a16(&mut self) {}
+
+    // 0xC3
+    // JP a16
     fn op_jp_a16(&mut self) {}
+
+    // 0xC4
+    // CALL NZ, a16
     fn op_call_nz_a16(&mut self) {}
+
+    // 0xC5
+    // PUSH BC
     fn op_push_bc(&mut self) {}
+
+    // 0xC6
+    // ADD A, d8
     fn op_add_a_d8(&mut self) {}
+
+    // 0xC7
+    // RST 00H
     fn op_rst_00h(&mut self) {}
+
+    // 0xC8
+    // RET Z
     fn op_ret_z(&mut self) {}
+
+    // 0xC9
+    // RET
     fn op_ret(&mut self) {}
+
+    // 0xCA
+    // JP Z, a16
     fn op_jp_z_a16(&mut self) {}
+
+    // 0xCB
+    // PREFIX CB
     fn op_prefix_cb(&mut self) {}
+
+    // 0xCC
+    // CALL Z, a16
     fn op_call_z_a16(&mut self) {}
+
+    // 0xCD
+    // CALL a16
     fn op_call_a16(&mut self) {}
+
+    // 0xCE
+    // ADC A, d8
     fn op_adc_a_d8(&mut self) {}
+
+    // 0xCF
+    // RST 08H
     fn op_rst_08h(&mut self) {}
 
-    // 0xD_
+    // 0xD0
+    // RET NC
     fn op_ret_nc(&mut self) {}
+
+    // 0xD1
+    // POP DE
     fn op_pop_de(&mut self) {}
+
+    // 0xD2
+    // JP NC, a16
     fn op_jp_nc_a16(&mut self) {}
+
+    // 0xD4
+    // CALL NC, a16
     fn op_call_nc_a16(&mut self) {}
+
+    // 0xD5
+    // PUSH DE
     fn op_push_de(&mut self) {}
+
+    // 0xD6
+    // SUB d8
     fn op_sub_d8(&mut self) {}
+
+    // 0xD7
+    // RST 10H
     fn op_rst_10h(&mut self) {}
+
+    // 0xD8
+    // RET C
     fn op_ret_c(&mut self) {}
+
+    // 0xD9
+    // RETI
     fn op_reti(&mut self) {}
+
+    // 0xDA
+    // JP C, a16
     fn op_jp_c_a16(&mut self) {}
+
+    // 0xDC
+    // CALL C, a16
     fn op_call_c_a16(&mut self) {}
+
+    // 0xDE
+    // SBC A, d8
     fn op_sbc_a_d8(&mut self) {}
+
+    // 0xDF
+    // RST 18H
     fn op_rst_18h(&mut self) {}
 
-    // 0xE_
+    // 0xE0
+    // LDH (a8), A
     fn op_ldh_mem_a8_a(&mut self) {}
+
+    // 0xE1
+    // POP HL
     fn op_pop_hl(&mut self) {}
+
+    // 0xE2
+    // LD (C), A
     fn op_ld_mem_c_a(&mut self) {}
+
+    // 0xE5
+    // PUSH HL
     fn op_push_hl(&mut self) {}
+
+    // 0xE6
+    // AND d8
     fn op_and_d8(&mut self) {}
+
+    // 0xE7
+    // RST 20H
     fn op_rst_20h(&mut self) {}
+
+    // 0xE8
+    // ADD SP, r8
     fn op_add_sp_r8(&mut self) {}
+
+    // 0xE9
+    // JP (HL)
     fn op_jp_hl(&mut self) {}
+
+    // 0xEA
+    // LD (a16), A
     fn op_ld_mem_a16_a(&mut self) {}
+
+    // 0xEE
+    // XOR d8
     fn op_xor_d8(&mut self) {}
+
+    // 0xEF
+    // RST 28H
     fn op_rst_28h(&mut self) {}
 
-    // 0xF_
+    // 0xF0
+    // LDH A, (a8)
     fn op_ldh_a_mem_a8(&mut self) {}
+
+    // 0xF1
+    // POP AF
     fn op_pop_af(&mut self) {}
+
+    // 0xF2
+    // LD A, (C)
     fn op_ld_a_mem_c(&mut self) {}
+
+    // 0xF3
+    // DI
     fn op_di(&mut self) {}
+
+    // 0xF5
+    // PUSH AF
     fn op_push_af(&mut self) {}
+
+    // 0xF6
+    // OR d8
     fn op_or_d8(&mut self) {}
+
+    // 0xF7
+    // RST 30H
     fn op_rst_30h(&mut self) {}
+
+    // 0xF8
+    // LD HL, SP+r8
     fn op_ld_hl_sp_r8(&mut self) {}
+
+    // 0xF9
+    // LD SP, HL
     fn op_ld_sp_hl(&mut self) {}
+
+    // 0xFA
+    // LD A, (a16)
     fn op_ld_a_mem_a16(&mut self) {}
+
+    // 0xFB
+    // EI
     fn op_ei(&mut self) {}
+
+    // 0xFE
+    // CP d8
     fn op_cp_d8(&mut self) {}
+
+    // 0xFF
+    // RST 38H
     fn op_rst_38h(&mut self) {}
+
 }

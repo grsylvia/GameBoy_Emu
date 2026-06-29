@@ -129,6 +129,7 @@ pub struct Instruction {
 pub struct GameBoy {
     reg: Registers,
     bus: Bus,
+    halt: bool,
 }
 
 
@@ -136,7 +137,8 @@ impl GameBoy {
     pub fn new() -> Self {
         GameBoy {
             reg: Registers::new(),
-            bus: Bus::new()
+            bus: Bus::new(),
+            halt: false,   
         }
     }
 
@@ -152,6 +154,10 @@ impl GameBoy {
     }
 
     pub fn cycle(&mut self) {
+        if self.halt {
+            // skips next byte fetch and execution if STOP instruction received
+            return;
+        }
         let opcode: u8 = self.fetch_byte();
         self.decode_and_execute(opcode);
     }
