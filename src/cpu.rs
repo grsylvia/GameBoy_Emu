@@ -87,6 +87,18 @@ impl Bus {
         }
     }
 
+    // loads a vector of u8 bytes, passed in as a pointer
+    fn load_rom(&mut self, bytes: &[u8]) {
+        let len = bytes.len();
+        if len > 0x8000 {
+            println!("WARNING: ROM too large for memory, ending load");
+            return;
+        } else {
+            // take mutable slice of rom and copy the bytes into the addresses
+            self.rom[..len].copy_from_slice(bytes);
+        }
+    }
+
     fn read(&self, addr: u16) -> u8 {
         match addr {
             0x0000..=0x7FFF => self.rom[addr as usize],
@@ -150,6 +162,16 @@ impl GameBoy {
     }
     
     pub fn decode_and_execute(&mut self, opcode: u8) {
+        // PC has already advanced past the opcode byte in fetch_byte,
+        // so subtract 1 to log the address the instruction started at
+        #[cfg(feature = "trace")]
+        println!(
+            "{:#06X}: {:#04X}  {}",
+            self.reg.pc.wrapping_sub(1),
+            opcode,
+            opcodes::MNEMONIC_TABLE[opcode as usize],
+        );
+
         opcodes::OPCODE_TABLE[opcode as usize](self);
     }
 
@@ -182,5 +204,9 @@ impl GameBoy {
             let position: u16 = self.reg.pc + (offset as u16);
             println!("Address: {:#06X} -> {:#04X}", position, self.bus.read(position));
         }
+    }
+
+    pub fn load_rom(&mut self, bytes: &[u8]) {
+        self.bus.load_rom(bytes);
     }
 }

@@ -6,6 +6,7 @@ const CYCLES_PER_FRAME: f32 = CPU_HZ / FRAMES_PER_SECOND;
 mod cpu;
 
 fn main() {
+
     let mut dmg = cpu::GameBoy::new();
 
     dmg.dump_registers();
